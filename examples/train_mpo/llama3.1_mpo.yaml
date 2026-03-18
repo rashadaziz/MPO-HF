@@ -27,3 +27,9 @@ bf16: true
 ddp_timeout: 180000000
 save_only_model: true
 save_strategy: 'no'
+
+### Uncomment below to publish the trained model to Hugging Face Hub
+# publish_to_hf: true
+# hf_hub_model_id: your_username/llama3.1-8b-mpo
+# hf_hub_private: false
+# hf_hub_token: your_hf_token

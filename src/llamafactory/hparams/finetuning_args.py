@@ -346,6 +346,18 @@ class FinetuningArguments(FreezeArguments, LoraArguments, RLHFArguments, GaloreA
         default=False,
         metadata={"help": "Whether or not to save the training loss curves."},
     )
+    publish_to_hf: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to publish the trained model to Hugging Face Hub after training."},
+    )
+    hf_hub_model_id: Optional[str] = field(
+        default=None,
+        metadata={"help": "The repository ID on Hugging Face Hub to publish the model to (e.g. 'username/model-name')."},
+    )
+    hf_hub_private: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to create the Hugging Face Hub repository as private."},
+    )
 
     def __post_init__(self):
         def split_arg(arg):
@@ -389,6 +401,9 @@ class FinetuningArguments(FreezeArguments, LoraArguments, RLHFArguments, GaloreA
 
         if self.train_mm_proj_only and self.finetuning_type != "full":
             raise ValueError("`train_mm_proj_only` is only valid for full training.")
+
+        if self.publish_to_hf and not self.hf_hub_model_id:
+            raise ValueError("`hf_hub_model_id` is required when `publish_to_hf` is enabled.")
 
         if self.finetuning_type != "lora":
             if self.loraplus_lr_ratio is not None:

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ...data import PairwiseDataCollatorWithPadding, get_dataset, get_template_and_fix_tokenizer
 from ...extras.constants import IGNORE_INDEX
+from ...extras.logging import get_logger
 from ...extras.ploting import plot_loss
 from ...hparams import ModelArguments
 from ...model import load_model, load_tokenizer
@@ -29,10 +30,43 @@ import deepspeed
 import torch.distributed as dist
 import json
 
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from transformers import Seq2SeqTrainingArguments, TrainerCallback
 
     from ...hparams import DataArguments, FinetuningArguments
+
+def _publish_model_to_hf(
+    trainer: "CustomDPOTrainer",
+    model_args: "ModelArguments",
+    finetuning_args: "FinetuningArguments",
+    tokenizer_module: dict,
+) -> None:
+    from huggingface_hub import HfApi
+
+    repo_id = finetuning_args.hf_hub_model_id
+    token = model_args.hf_hub_token
+    private = finetuning_args.hf_hub_private
+
+    api = HfApi(token=token)
+    api.create_repo(repo_id=repo_id, private=private, exist_ok=True)
+
+    trainer.model.push_to_hub(
+        repo_id,
+        token=token,
+        safe_serialization=True,
+    )
+
+    tokenizer = tokenizer_module["tokenizer"]
+    tokenizer.push_to_hub(repo_id, token=token)
+
+    processor = tokenizer_module.get("processor")
+    if processor is not None and hasattr(processor, "image_processor"):
+        processor.image_processor.push_to_hub(repo_id, token=token)
+
+    logger.info("Successfully published model to: https://huggingface.co/{}".format(repo_id))
+
 
 def is_main_process():
     """判断是否为主进程（rank 0）。"""
@@ -129,3 +163,8 @@ def run_dpo(
     
     # Create model card
     create_modelcard_and_push(trainer, model_args, data_args, training_args, finetuning_args)
+
+    # Publish to Hugging Face Hub
+    if finetuning_args.publish_to_hf and training_args.do_train and trainer.is_world_process_zero():
+        logger.info("Publishing model to Hugging Face Hub: {}".format(finetuning_args.hf_hub_model_id))
+        _publish_model_to_hf(trainer, model_args, finetuning_args, tokenizer_module)
