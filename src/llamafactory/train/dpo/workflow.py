@@ -43,6 +43,7 @@ def _publish_model_to_hf(
     finetuning_args: "FinetuningArguments",
     tokenizer_module: dict,
 ) -> None:
+    import os
     from huggingface_hub import HfApi
 
     repo_id = finetuning_args.hf_hub_model_id
@@ -52,10 +53,16 @@ def _publish_model_to_hf(
     api = HfApi(token=token)
     api.create_repo(repo_id=repo_id, private=private, exist_ok=True)
 
-    trainer.model.push_to_hub(
-        repo_id,
+    # Upload the saved model from output_dir instead of using trainer.model directly,
+    # because trainer.model may be a DeepSpeed engine wrapper that doesn't serialize
+    # all parameters correctly via push_to_hub().
+    # trainer.save_model() (called earlier) already handles DeepSpeed weight gathering.
+    output_dir = trainer.args.output_dir
+    api.upload_folder(
+        folder_path=output_dir,
+        repo_id=repo_id,
         token=token,
-        safe_serialization=True,
+        ignore_patterns=["optimizer*", "scheduler*", "global_step*", "rng_state*", "trainer_state*", "training_args*"],
     )
 
     tokenizer = tokenizer_module["tokenizer"]
