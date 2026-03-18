@@ -113,7 +113,16 @@ class CustomDPOTrainer(DPOTrainer):
     def create_optimizer(self) -> "torch.optim.Optimizer":
         if self.optimizer is None:
             self.optimizer = create_custom_optimizer(self.model, self.args, self.finetuning_args)
-        return super().create_optimizer()
+        result = super().create_optimizer()
+        # Filter out empty param groups to prevent LR scheduler mismatch with DeepSpeed.
+        # Some models (e.g. Gemma-2) have no bias params and their norm layers may not be
+        # registered in ALL_LAYERNORM_LAYERS, resulting in an empty no-decay param group.
+        # DeepSpeed can drop empty groups, causing a size mismatch with the scheduler's base_lrs.
+        if self.optimizer is not None:
+            self.optimizer.param_groups = [
+                pg for pg in self.optimizer.param_groups if len(pg.get("params", [])) > 0
+            ]
+        return result
 
     @override
     def create_scheduler(
